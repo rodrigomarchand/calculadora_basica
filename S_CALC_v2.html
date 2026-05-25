@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ============================================================
+           BASE / SCROLLBAR
+        ============================================================ */
+        * { box-sizing: border-box; }
+
+        .scrollbar-custom::-webkit-scrollbar { width: 5px; }
+        .scrollbar-custom::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-custom::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .scrollbar-custom::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* ============================================================
+           LAYOUT PRINCIPAL
+           Calculadora: largura fixa no centro
+           Histórico: painel lateral expansível
+        ============================================================ */
+        body {
+            background: #020617;
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 2rem 1rem;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+
+        /* Container raiz — flex linha */
+        #app {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.25rem;
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        /* Calculadora: largura fixa, centralizada */
+        #calc-wrapper {
+            flex: 0 0 360px;
+            width: 360px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 1.75rem;
+            padding: 1.25rem;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Histórico: cresce para ocupar o restante */
+        #history-panel {
+            flex: 1 1 0;
+            min-width: 0;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 1.75rem;
+            padding: 1.25rem;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            /* altura vinculada à calculadora via JS */
+        }
+
+        /* Em telas pequenas: empilha verticalmente */
+        @media (max-width: 700px) {
+            #app { flex-direction: column; }
+            #calc-wrapper { flex: none; width: 100%; max-width: 400px; align-self: center; }
+            #history-panel { width: 100%; }
+        }
+
+        /* ============================================================
+           VISOR — fonte adaptativa como calculadora física
+        ============================================================ */
+        #display-area {
+            background: #0a0f1e;
+            border: 1px solid #1e293b;
+            border-radius: 1rem;
+            padding: 0.75rem 1rem 0.85rem;
+            margin-bottom: 0.85rem;
+            text-align: right;
+            min-height: 88px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            overflow: hidden;
+        }
+        #previous-operand {
+            font-size: 0.78rem;
+            color: #475569;
+            font-weight: 500;
+            min-height: 1.1rem;
+            letter-spacing: 0.03em;
+            margin-bottom: 0.2rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #current-operand {
+            /* fonte começa grande e encolhe conforme o número cresce */
+            font-size: clamp(1.4rem, 8vw, 2.6rem);
+            font-weight: 300;
+            color: #f8fafc;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            /* garante que nunca estoure o container */
+            max-width: 100%;
+            display: block;
+            transition: font-size 0.12s ease;
+        }
+
+        /* ============================================================
+           DENSIDADE
+        ============================================================ */
+        :root {
+            --btn-py: 0.7rem;
+            --btn-fs: 0.92rem;
+            --btn-num-fs: 1.05rem;
+            --btn-op-fs: 1.2rem;
+            --btn-eq-fs: 1.2rem;
+            --gap: 0.4rem;
+            --mem-py: 0.3rem;
+        }
+        [data-density="compact"] {
+            --btn-py: 0.32rem; --btn-fs: 0.75rem; --btn-num-fs: 0.82rem;
+            --btn-op-fs: 0.9rem; --btn-eq-fs: 0.9rem; --gap: 0.22rem; --mem-py: 0.18rem;
+        }
+        [data-density="comfortable"] {
+            --btn-py: 1rem; --btn-fs: 1rem; --btn-num-fs: 1.2rem;
+            --btn-op-fs: 1.35rem; --btn-eq-fs: 1.35rem; --gap: 0.55rem; --mem-py: 0.5rem;
+        }
+
+        /* ============================================================
+           RIPPLE + PRESS
+        ============================================================ */
+        .btn-ripple { position: relative; overflow: hidden; }
+        .btn-ripple::after {
+            content:''; position:absolute; inset:0; border-radius:inherit;
+            background: radial-gradient(circle, rgba(255,255,255,0.32) 0%, transparent 70%);
+            opacity:0; transform:scale(0); pointer-events:none;
+            transition: transform 0s, opacity 0s;
+        }
+        .btn-ripple:active::after {
+            transform:scale(2.5); opacity:1;
+            transition: transform 0.18s ease-out, opacity 0.18s ease-out;
+        }
+
+        /* Botões calculadora */
+        .calc-btn {
+            padding-top:var(--btn-py); padding-bottom:var(--btn-py); font-size:var(--btn-fs);
+            transition: background-color 0.12s, padding 0.22s ease, font-size 0.22s ease, transform 0.1s ease, box-shadow 0.1s ease;
+            cursor: pointer;
+        }
+        .calc-btn:active { transform:scale(0.87); box-shadow:0 0 0 2px rgba(99,102,241,.35); }
+
+        .calc-btn-num {
+            padding-top:var(--btn-py); padding-bottom:var(--btn-py); font-size:var(--btn-num-fs);
+            transition: background-color 0.12s, padding 0.22s ease, font-size 0.22s ease, transform 0.1s ease, box-shadow 0.1s ease;
+            cursor: pointer;
+        }
+        .calc-btn-num:active { transform:scale(0.87); box-shadow:0 0 0 2px rgba(99,102,241,.35); }
+
+        .calc-btn-op {
+            padding-top:var(--btn-py); padding-bottom:var(--btn-py); font-size:var(--btn-op-fs);
+            transition: background-color 0.12s, padding 0.22s ease, font-size 0.22s ease, transform 0.1s ease, box-shadow 0.1s ease;
+            cursor: pointer;
+        }
+        .calc-btn-op:active { transform:scale(0.87); box-shadow:0 0 0 2px rgba(99,102,241,.55); }
+
+        .calc-btn-eq {
+            padding-top:var(--btn-py); padding-bottom:var(--btn-py); font-size:var(--btn-eq-fs);
+            transition: background-color 0.12s, padding 0.22s ease, font-size 0.22s ease, transform 0.12s ease, box-shadow 0.12s ease;
+            cursor: pointer;
+        }
+        .calc-btn-eq:active { transform:scale(0.84); box-shadow:0 0 0 3px rgba(99,102,241,.7); }
+
+        .calc-grid { gap:var(--gap); transition:gap 0.22s ease; }
+
+        .mem-btn {
+            padding-top:var(--mem-py); padding-bottom:var(--mem-py); font-size:var(--btn-fs);
+            transition: padding 0.22s ease, font-size 0.22s ease, transform 0.1s ease, box-shadow 0.1s ease;
+            cursor: pointer;
+        }
+        .mem-btn:active:not(:disabled) { transform:scale(0.85); box-shadow:0 0 0 2px rgba(99,102,241,.4); }
+
+        .density-btn { transition: all 0.18s; cursor: pointer; }
+        .density-btn:active { transform:scale(0.90); }
+        .density-btn.active { background-color:#4338ca; color:#fff; border-color:#4338ca; }
+
+        /* ============================================================
+           ABAS DE MODO (Calculadora / Operação)
+        ============================================================ */
+        .mode-tab {
+            flex:1; padding:0.45rem 0.6rem; font-size:0.74rem; font-weight:600;
+            border-radius:0.55rem; border:1px solid #1e293b; color:#64748b;
+            transition:all 0.18s; cursor:pointer; background:transparent;
+            position:relative; overflow:hidden; white-space:nowrap;
+        }
+        .mode-tab:active { transform:scale(0.96); }
+        .mode-tab.active { background:#1e293b; color:#e2e8f0; border-color:#334155; }
+        .mode-tab.active::after {
+            content:''; position:absolute; bottom:0; left:20%; right:20%; height:2px;
+            background:#6366f1; border-radius:2px 2px 0 0;
+        }
+
+        /* ============================================================
+           MÓDULO TEMPO DE OPERAÇÃO
+        ============================================================ */
+        .op-field {
+            display:flex; flex-direction:column; gap:0.2rem;
+            padding:0.6rem 0.8rem;
+            border-bottom:1px solid #0f172a;
+            transition: background 0.12s;
+        }
+        .op-field:last-child { border-bottom:none; }
+        .op-field label {
+            font-size:0.65rem; font-weight:700; color:#475569;
+            text-transform:uppercase; letter-spacing:0.06em;
+        }
+        .op-field input {
+            background:transparent; border:none; outline:none;
+            color:#e2e8f0; font-size:0.9rem; font-weight:500; width:100%; padding:0;
+        }
+        .op-field input::placeholder { color:#334155; }
+        .op-field input:focus { color:#a5b4fc; }
+        .op-field.editable { background:rgba(99,102,241,0.06); border-left:2px solid #6366f1; }
+        .op-field.editable label { color:#818cf8; }
+        .op-field.editable input { color:#a5b4fc; }
+        .op-field.result-field { background:rgba(16,185,129,0.05); border-left:2px solid #10b981; }
+        .op-field.result-field label { color:#34d399; }
+        .result-value { font-size:0.92rem; font-weight:600; color:#6ee7b7; min-height:1.3rem; }
+        .op-field .sub-value { font-size:0.7rem; color:#475569; margin-top:0.05rem; }
+        .op-section-label {
+            font-size:0.6rem; font-weight:700; color:#334155;
+            text-transform:uppercase; letter-spacing:0.08em;
+            padding:0.4rem 0.8rem 0.15rem; background:rgba(0,0,0,0.25);
+        }
+        .calc-mode-btn {
+            flex:1; padding:0.35rem 0.4rem; font-size:0.66rem; font-weight:600;
+            border-radius:0.45rem; border:1px solid #1e293b; color:#475569;
+            background:transparent; transition:all 0.18s; cursor:pointer; white-space:nowrap;
+        }
+        .calc-mode-btn:active { transform:scale(0.93); }
+        .calc-mode-btn.active { background:#1e1b4b; color:#a5b4fc; border-color:#4338ca; }
+        .op-calc-btn {
+            width:100%; padding:0.65rem; font-size:0.85rem; font-weight:700;
+            border-radius:0.7rem; border:none; cursor:pointer;
+            background:linear-gradient(135deg,#4f46e5,#6366f1); color:white;
+            transition:all 0.15s; box-shadow:0 4px 15px rgba(99,102,241,.3);
+        }
+        .op-calc-btn:hover { filter:brightness(1.1); transform:translateY(-1px); }
+        .op-calc-btn:active { transform:scale(0.96); box-shadow:0 0 0 3px rgba(99,102,241,.5); }
+        .op-clear-btn {
+            width:100%; padding:0.4rem; font-size:0.72rem; font-weight:600;
+            border-radius:0.55rem; border:1px solid #1e293b; cursor:pointer;
+            background:transparent; color:#475569; transition:all 0.12s;
+        }
+        .op-clear-btn:hover { border-color:#ef4444; color:#f87171; background:rgba(239,68,68,.07); }
+        .op-clear-btn:active { transform:scale(0.96); }
+
+        @keyframes resultPop { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+        .result-animate { animation:resultPop 0.22s ease-out; }
+        .op-error { color:#f87171 !important; font-size:0.78rem !important; font-weight:600 !important; }
+
+        /* ============================================================
+           HISTÓRICO — itens com texto quebrado corretamente
+        ============================================================ */
+        #history-list li {
+            word-break: break-word;
+        }
+
+        /* botões do histórico */
+        .hist-action-btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+            background: #1e293b; border: 1px solid #334155;
+            color: #cbd5e1; border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; transition: all 0.15s; white-space: nowrap;
+        }
+        .hist-action-btn:hover { background: #334155; color: #f1f5f9; }
+        .hist-action-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+<div id="app">
+
+    <!-- ================================================================
+         CALCULADORA (largura fixa)
+    ================================================================ -->
+    <div id="calc-wrapper" data-density="standard">
+
+        <!-- Abas de modo -->
+        <div class="flex gap-1.5 mb-3">
+            <button class="mode-tab active btn-ripple" id="tab-basic" onclick="switchMode('basic')">🧮 Calculadora</button>
+            <button class="mode-tab btn-ripple" id="tab-op" onclick="switchMode('op')">⏱ Operação</button>
+        </div>
+
+        <!-- ── PAINEL CALCULADORA ── -->
+        <div id="calc-panel" class="flex flex-col">
+
+            <!-- Visor -->
+            <div id="display-area">
+                <div id="previous-operand"></div>
+                <span id="current-operand">0</span>
+            </div>
+
+            <!-- Densidade -->
+            <div class="flex items-center gap-1.5 mb-2.5">
+                <span style="font-size:0.65rem;color:#475569;font-weight:600;white-space:nowrap">Layout:</span>
+                <button onclick="setDensity('compact')" id="density-compact"
+                    class="density-btn btn-ripple flex-1 py-1 px-1 text-xs font-semibold rounded-lg border border-slate-800 text-slate-500 hover:border-indigo-700 hover:text-indigo-400">Compacto</button>
+                <button onclick="setDensity('standard')" id="density-standard"
+                    class="density-btn btn-ripple active flex-1 py-1 px-1 text-xs font-semibold rounded-lg border border-slate-800 text-slate-500 hover:border-indigo-700 hover:text-indigo-400">Padrão</button>
+                <button onclick="setDensity('comfortable')" id="density-comfortable"
+                    class="density-btn btn-ripple flex-1 py-1 px-1 text-xs font-semibold rounded-lg border border-slate-800 text-slate-500 hover:border-indigo-700 hover:text-indigo-400">Confortável</button>
+            </div>
+
+            <!-- Memória -->
+            <div class="calc-grid grid grid-cols-5 mb-2 font-semibold text-slate-500" style="font-size:var(--btn-fs)">
+                <button onclick="memoryClear()" class="mem-btn btn-ripple hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-25 disabled:cursor-default" id="btn-mc" disabled>MC</button>
+                <button onclick="memoryRecall()" class="mem-btn btn-ripple hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-25 disabled:cursor-default" id="btn-mr" disabled>MR</button>
+                <button onclick="memoryAdd()" class="mem-btn btn-ripple hover:bg-slate-800 rounded-lg transition-colors">M+</button>
+                <button onclick="memorySubtract()" class="mem-btn btn-ripple hover:bg-slate-800 rounded-lg transition-colors">M-</button>
+                <button onclick="memoryStore()" class="mem-btn btn-ripple hover:bg-slate-800 rounded-lg transition-colors">MS</button>
+            </div>
+
+            <!-- Teclado -->
+            <div class="calc-grid grid grid-cols-4">
+                <button onclick="calculatePercentage()" class="calc-btn btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl font-semibold border border-slate-700/60">%</button>
+                <button onclick="clearEntry()" class="calc-btn btn-ripple bg-rose-950/40 hover:bg-rose-900/50 text-rose-400 rounded-xl font-semibold border border-rose-900/30">CE</button>
+                <button onclick="clearAll()" class="calc-btn btn-ripple bg-rose-950/40 hover:bg-rose-900/50 text-rose-400 rounded-xl font-semibold border border-rose-900/30">C</button>
+                <button onclick="deleteNumber()" class="calc-btn btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl font-semibold flex justify-center items-center border border-slate-700/60">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M5.83 5.146a.5.5 0 0 0 0 .708L7.975 8l-2.147 2.146a.5.5 0 0 0 .704.708l2.147-2.147 2.146 2.147a.5.5 0 0 0 .707-.708L9.39 8l2.146-2.146a.5.5 0 0 0-.707-.708L8.683 7.293 6.536 5.146a.5.5 0 0 0-.707 0z"/>
+                        <path d="M13.683 1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7.08a2 2 0 0 1-1.519-.698L.241 8.65a1 1 0 0 1 0-1.302L5.084 1.7A2 2 0 0 1 6.603 1h7.08zm-7.08 1a1 1 0 0 0-.76.35L1.06 8l4.784 5.65a1 1 0 0 0 .76.35h7.08a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1h-7.08z"/>
+                    </svg>
+                </button>
+
+                <button onclick="singleOperation('1/x')" class="calc-btn btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl font-semibold border border-slate-700/60">¹/x</button>
+                <button onclick="singleOperation('x2')" class="calc-btn btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl font-semibold border border-slate-700/60">x²</button>
+                <button onclick="singleOperation('sqrt')" class="calc-btn btn-ripple bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl font-semibold border border-slate-700/60">√x</button>
+                <button onclick="chooseOperation('/')" class="calc-btn-op btn-ripple bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 rounded-xl font-bold border border-indigo-900/40">÷</button>
+
+                <button onclick="appendNumber('7')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">7</button>
+                <button onclick="appendNumber('8')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">8</button>
+                <button onclick="appendNumber('9')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">9</button>
+                <button onclick="chooseOperation('*')" class="calc-btn-op btn-ripple bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 rounded-xl font-bold border border-indigo-900/40">×</button>
+
+                <button onclick="appendNumber('4')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">4</button>
+                <button onclick="appendNumber('5')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">5</button>
+                <button onclick="appendNumber('6')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">6</button>
+                <button onclick="chooseOperation('-')" class="calc-btn-op btn-ripple bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 rounded-xl font-bold border border-indigo-900/40">-</button>
+
+                <button onclick="appendNumber('1')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">1</button>
+                <button onclick="appendNumber('2')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">2</button>
+                <button onclick="appendNumber('3')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">3</button>
+                <button onclick="chooseOperation('+')" class="calc-btn-op btn-ripple bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 rounded-xl font-bold border border-indigo-900/40">+</button>
+
+                <button onclick="toggleSign()" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">+/-</button>
+                <button onclick="appendNumber('0')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">0</button>
+                <button onclick="appendNumber('.')" class="calc-btn-num btn-ripple bg-slate-800/70 hover:bg-slate-700 text-slate-100 rounded-xl font-semibold border border-slate-700/50">,</button>
+                <button onclick="compute()" class="calc-btn-eq btn-ripple bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/30">=</button>
+            </div>
+        </div>
+
+        <!-- ── PAINEL TEMPO DE OPERAÇÃO ── -->
+        <div id="op-panel" class="hidden flex-col">
+
+            <!-- Seletor de modo -->
+            <div class="flex gap-1.5 mb-2.5">
+                <button class="calc-mode-btn active btn-ripple" id="opmode-termino" onclick="setOpMode('termino')">📅 Término</button>
+                <button class="calc-mode-btn btn-ripple" id="opmode-produt" onclick="setOpMode('produtividade')">📊 Produtividade</button>
+                <button class="calc-mode-btn btn-ripple" id="opmode-peso" onclick="setOpMode('peso')">⚖️ Peso</button>
+            </div>
+
+            <!-- Campos (estrutura fixa) -->
+            <div class="rounded-xl border border-slate-800 flex flex-col overflow-hidden mb-2.5" style="background:#080d18">
+
+                <div class="op-section-label">Entrada</div>
+
+                <div class="op-field editable" id="field-inicio">
+                    <label>Início da Operação</label>
+                    <input type="datetime-local" id="op-inicio" step="60" oninput="opLiveUpdate()" class="[color-scheme:dark]">
+                </div>
+
+                <div class="op-field editable" id="field-peso">
+                    <label id="label-peso">Peso Total (ton)</label>
+                    <input type="number" id="op-peso" placeholder="Ex: 63000" min="0" step="any" oninput="opLiveUpdate()">
+                    <div class="result-value" id="op-peso-result" style="display:none">—</div>
+                </div>
+
+                <div class="op-field editable" id="field-carga">
+                    <label>Carregamento Médio p/ hora (ton/h)</label>
+                    <input type="number" id="op-carga" placeholder="Ex: 1.166 — deixe vazio p/ calcular" min="0" step="any" oninput="opCargaManual()">
+                    <div class="result-value" id="op-carga-result" style="display:none">—</div>
+                    <span class="sub-value" id="op-carga-hint">Deixe em branco para calcular com ritmo atual</span>
+                </div>
+
+                <div class="op-field" id="field-termino">
+                    <label id="label-termino">Previsão de Término</label>
+                    <input type="datetime-local" id="op-termino-input" step="60" oninput="opLiveUpdate()" class="[color-scheme:dark]" style="display:none">
+                    <div class="result-value" id="op-termino-result">—</div>
+                </div>
+
+                <div class="op-section-label">Resultados</div>
+
+                <div class="op-field result-field" id="field-24h">
+                    <label>Projeção 24 horas (ton)</label>
+                    <div class="result-value" id="op-24h">—</div>
+                </div>
+
+                <div class="op-field result-field" id="field-tempo">
+                    <label>Tempo de Operação</label>
+                    <div class="result-value" id="op-tempo">—</div>
+                </div>
+
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+                <button class="op-calc-btn btn-ripple" onclick="calcularOperacao()">Calcular</button>
+                <button class="op-clear-btn btn-ripple" onclick="limparOperacao()">Limpar campos</button>
+            </div>
+        </div>
+
+    </div><!-- /calc-wrapper -->
+
+    <!-- ================================================================
+         HISTÓRICO (expande para a direita)
+    ================================================================ -->
+    <div id="history-panel">
+
+        <!-- Cabeçalho -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem;flex-shrink:0">
+            <h2 style="font-size:0.95rem;font-weight:700;color:#e2e8f0;letter-spacing:-0.01em">Histórico</h2>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+                <button onclick="triggerImport()" title="Importar" style="padding:0.35rem;border-radius:0.45rem;background:transparent;border:none;color:#34d399;cursor:pointer;display:flex;transition:background 0.12s" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='transparent'">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                        <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                    </svg>
+                </button>
+                <button onclick="clearHistory()" title="Limpar tudo" style="padding:0.35rem;border-radius:0.45rem;background:transparent;border:none;color:#f87171;cursor:pointer;display:flex;transition:background 0.12s" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='transparent'">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <input type="file" id="import-file-input" accept=".txt" class="hidden" onchange="handleFileImport(event)">
+
+        <!-- Lista com scroll -->
+        <ul id="history-list" class="scrollbar-custom" style="flex:1;overflow-y:auto;padding-right:0.4rem;margin-bottom:0.85rem;min-height:0"></ul>
+
+        <!-- Exportação -->
+        <div style="display:flex;gap:0.5rem;flex-shrink:0;flex-wrap:wrap">
+            <button onclick="downloadHistory(false)" class="hist-action-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M5.5 7a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zM5 9.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5z"/>
+                    <path d="M9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0zm0 1v2.5a1 1 0 0 0 1 1H13v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+                </svg>
+                TXT Normal
+            </button>
+            <button onclick="downloadHistory(true)" class="hist-action-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M10 7v1.076c.54.166 1 .597 1 1.224v2.4c0 .816-.781 1.3-1.5 1.3h-3c-.719 0-1.5-.484-1.5-1.3V9.3c0-.627.46-1.058 1-1.224V7a2 2 0 1 1 4 0zM7 7v1h2V7a1 1 0 0 0-2 0zM6 9.3v2.4c0 .046.042.1.1.1h2.8c.058 0 .1-.054.1-.1V9.3c0-.046-.042-.1-.1-.1H6.1c-.058 0-.1.054-.1.1z"/>
+                    <path d="M9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0zm0 1v2.5a1 1 0 0 0 1 1H13v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+                </svg>
+                TXT Cripto
+            </button>
+        </div>
+
+    </div><!-- /history-panel -->
+
+</div><!-- /app -->
+
+<script>
+// ====================================================================
+// SINCRONIZA ALTURA DO HISTÓRICO COM A CALCULADORA
+// ====================================================================
+function syncHistoryHeight() {
+    const calc = document.getElementById('calc-wrapper');
+    const hist = document.getElementById('history-panel');
+    if (window.innerWidth > 700) {
+        hist.style.height = calc.offsetHeight + 'px';
+        hist.style.minHeight = '300px';
+    } else {
+        hist.style.height = '';
+        hist.style.minHeight = '280px';
+    }
+}
+// Roda ao carregar e quando a calculadora muda de tamanho (ResizeObserver)
+window.addEventListener('load', syncHistoryHeight);
+window.addEventListener('resize', syncHistoryHeight);
+if (window.ResizeObserver) {
+    new ResizeObserver(syncHistoryHeight).observe(document.getElementById('calc-wrapper'));
+}
+
+// ====================================================================
+// FONTE ADAPTATIVA DO VISOR (como calculadora física)
+// ====================================================================
+function adaptDisplayFont() {
+    const el   = document.getElementById('current-operand');
+    const text = el.innerText || '';
+    const len  = text.length;
+    let size;
+    if      (len <= 7)  size = '2.6rem';
+    else if (len <= 10) size = '2.1rem';
+    else if (len <= 13) size = '1.7rem';
+    else if (len <= 16) size = '1.4rem';
+    else                size = '1.15rem';
+    el.style.fontSize = size;
+}
+
+// ====================================================================
+// UTILITÁRIO — data/hora local sem depender de toISOString (que é UTC)
+// Funciona corretamente no fuso horário do navegador (Brasil UTC-3)
+// ====================================================================
+function nowLocalISO() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+         + `T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+// MODO DE PAINEL
+// ====================================================================
+let currentMode = 'basic';
+
+function switchMode(mode) {
+    currentMode = mode;
+    const calcPanel = document.getElementById('calc-panel');
+    const opPanel   = document.getElementById('op-panel');
+    document.getElementById('tab-basic').classList.toggle('active', mode === 'basic');
+    document.getElementById('tab-op').classList.toggle('active', mode === 'op');
+    if (mode === 'basic') {
+        calcPanel.classList.remove('hidden'); calcPanel.classList.add('flex');
+        opPanel.classList.add('hidden');      opPanel.classList.remove('flex');
+    } else {
+        calcPanel.classList.add('hidden');    calcPanel.classList.remove('flex');
+        opPanel.classList.remove('hidden');   opPanel.classList.add('flex');
+        const ini = document.getElementById('op-inicio');
+        if (!ini.value) {
+            ini.value = nowLocalISO();
+        }
+    }
+    setTimeout(syncHistoryHeight, 50);
+}
+
+// ====================================================================
+// TEMPO DE OPERAÇÃO
+// ====================================================================
+let opMode = 'termino';
+let cargaManualizada = false;
+function getEl(id) { return document.getElementById(id); }
+
+function setOpMode(mode) {
+    opMode = mode;
+    document.querySelectorAll('.calc-mode-btn').forEach(b => b.classList.remove('active'));
+    getEl(mode === 'produtividade' ? 'opmode-produt' : 'opmode-' + mode).classList.add('active');
+    document.querySelectorAll('.op-field').forEach(f => f.classList.remove('editable','result-field'));
+
+    const pesoInput     = getEl('op-peso');
+    const pesoResult    = getEl('op-peso-result');
+    const cargaInput    = getEl('op-carga');
+    const cargaResult   = getEl('op-carga-result');
+    const cargaHint     = getEl('op-carga-hint');
+    const terminoInput  = getEl('op-termino-input');
+    const terminoResult = getEl('op-termino-result');
+    const fieldTermino  = getEl('field-termino');
+    const labelTermino  = getEl('label-termino');
+
+    if (mode === 'termino') {
+        labelTermino.textContent = 'Previsão de Término';
+        pesoInput.style.display = ''; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
+        pesoResult.style.display = 'none';
+        getEl('field-peso').classList.add('editable');
+        cargaInput.style.display = ''; cargaInput.readOnly = false;
+        cargaInput.placeholder = 'Ex: 1.166 — deixe vazio p/ calcular';
+        cargaResult.style.display = 'none';
+        cargaHint.textContent = 'Deixe em branco para calcular com ritmo atual';
+        getEl('field-carga').classList.add('editable');
+        terminoInput.style.display = 'none'; terminoResult.style.display = '';
+        fieldTermino.classList.add('result-field');
+        getEl('field-24h').classList.add('result-field');
+        getEl('field-tempo').classList.add('result-field');
+        getEl('field-inicio').classList.add('editable');
+
+    } else if (mode === 'produtividade') {
+        labelTermino.textContent = 'Término da Operação';
+        pesoInput.style.display = ''; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
+        pesoResult.style.display = 'none';
+        getEl('field-peso').classList.add('editable');
+        cargaInput.style.display = 'none'; cargaInput.value = '';
+        cargaResult.style.display = ''; cargaResult.textContent = '—';
+        cargaHint.textContent = 'Calculado a partir de Início + Término + Peso';
+        getEl('field-carga').classList.add('result-field');
+        terminoInput.style.display = ''; terminoResult.style.display = 'none';
+        fieldTermino.classList.add('editable');
+        getEl('field-24h').classList.add('result-field');
+        getEl('field-tempo').classList.add('result-field');
+        getEl('field-inicio').classList.add('editable');
+
+    } else if (mode === 'peso') {
+        labelTermino.textContent = 'Término da Operação';
+        pesoInput.style.display = 'none'; pesoInput.value = '';
+        pesoResult.style.display = ''; pesoResult.textContent = '—';
+        getEl('field-peso').classList.add('result-field');
+        cargaInput.style.display = ''; cargaInput.readOnly = false; cargaInput.placeholder = 'Ex: 1.166';
+        cargaResult.style.display = 'none';
+        cargaHint.textContent = 'Informe a produtividade conhecida';
+        getEl('field-carga').classList.add('editable');
+        terminoInput.style.display = ''; terminoResult.style.display = 'none';
+        fieldTermino.classList.add('editable');
+        getEl('field-24h').classList.add('result-field');
+        getEl('field-tempo').classList.add('result-field');
+        getEl('field-inicio').classList.add('editable');
+    }
+    limparResultados();
+    setTimeout(syncHistoryHeight, 50);
+}
+
+function opCargaManual() { cargaManualizada = getEl('op-carga').value.trim() !== ''; opLiveUpdate(); }
+function opLiveUpdate()  { calcularOperacao(true); }
+
+function calcularOperacao(silent = false) {
+    const inicioVal = getEl('op-inicio').value;
+    const inicio    = inicioVal ? new Date(inicioVal) : null;
+    const pesoVal   = parseFloat(getEl('op-peso').value);
+    const cargaVal  = parseFloat(getEl('op-carga').value);
+
+    function setRes(id, val) {
+        const el = getEl(id); if (!el) return;
+        el.textContent = val; el.className = 'result-value result-animate';
+        setTimeout(() => el.classList.remove('result-animate'), 300);
+    }
+    function setErr(id, msg) {
+        const el = getEl(id); if (!el) return;
+        el.textContent = msg; el.className = 'result-value op-error';
+    }
+
+    if (opMode === 'termino') {
+        if (!inicio || isNaN(inicio.getTime())) { if (!silent) setErr('op-termino-result','Informe o início'); return; }
+        if (isNaN(pesoVal) || pesoVal <= 0)      { if (!silent) setErr('op-termino-result','Informe o peso'); return; }
+        let carga = cargaVal;
+        if (!cargaManualizada || isNaN(carga) || carga <= 0) {
+            const dec = (new Date() - inicio) / 3600000;
+            if (dec > 0) {
+                carga = pesoVal / dec;
+                if (!cargaManualizada) getEl('op-carga').placeholder = formatNum(carga,3) + ' (calculado)';
+            } else { if (!silent) setErr('op-termino-result','Informe a produtividade'); return; }
+        }
+        if (isNaN(carga) || carga <= 0) { if (!silent) setErr('op-termino-result','Produtividade inválida'); return; }
+        const hTot = pesoVal / carga;
+        const {hh,mm} = splitH(hTot);
+        const fim = new Date(inicio.getTime() + hTot * 3600000);
+        setRes('op-24h', formatNum(carga * 24, 3) + ' ton');
+        setRes('op-tempo', `${hh}h ${String(mm).padStart(2,'0')}min`);
+        setRes('op-termino-result', fmtDT(fim));
+        if (!silent) addToHistory(`⏱ Término | Início: ${fmtDT(inicio)} | Peso: ${formatNum(pesoVal,3)} ton | Prod: ${formatNum(carga,3)} t/h | Tempo: ${hh}h${mm}min | Fim: ${fmtDT(fim)}`);
+
+    } else if (opMode === 'produtividade') {
+        const ti = getEl('op-termino-input');
+        const tv = ti && ti.value ? new Date(ti.value) : null;
+        if (!inicio || isNaN(inicio.getTime()))       { if (!silent) setErr('op-carga-result','Informe o início'); return; }
+        if (!tv || isNaN(tv.getTime()))               { if (!silent) setErr('op-carga-result','Informe o término'); return; }
+        if (isNaN(pesoVal) || pesoVal <= 0)           { if (!silent) setErr('op-carga-result','Informe o peso'); return; }
+        if (tv.getTime() <= inicio.getTime())         { if (!silent) setErr('op-carga-result','Término deve ser após o início'); return; }
+        const hTot = (tv - inicio) / 3600000;
+        const carga = pesoVal / hTot;
+        const {hh,mm} = splitH(hTot);
+        setRes('op-carga-result', formatNum(carga,3) + ' ton/h');
+        setRes('op-24h', formatNum(carga * 24, 3) + ' ton');
+        setRes('op-tempo', `${hh}h ${String(mm).padStart(2,'0')}min`);
+        if (!silent) addToHistory(`📊 Produtividade | Início: ${fmtDT(inicio)} | Fim: ${fmtDT(tv)} | Peso: ${formatNum(pesoVal,3)} ton | Prod: ${formatNum(carga,3)} t/h | Tempo: ${hh}h${mm}min`);
+
+    } else if (opMode === 'peso') {
+        const ti = getEl('op-termino-input');
+        const tv = ti && ti.value ? new Date(ti.value) : null;
+        if (!inicio || isNaN(inicio.getTime()))       { if (!silent) setErr('op-peso-result','Informe o início'); return; }
+        if (!tv || isNaN(tv.getTime()))               { if (!silent) setErr('op-peso-result','Informe o término'); return; }
+        if (isNaN(cargaVal) || cargaVal <= 0)         { if (!silent) setErr('op-peso-result','Informe a produtividade'); return; }
+        if (tv.getTime() <= inicio.getTime())         { if (!silent) setErr('op-peso-result','Término deve ser após o início'); return; }
+        const hTot = (tv - inicio) / 3600000;
+        const peso = cargaVal * hTot;
+        const {hh,mm} = splitH(hTot);
+        setRes('op-peso-result', formatNum(peso,3) + ' ton');
+        setRes('op-24h', formatNum(cargaVal * 24, 3) + ' ton');
+        setRes('op-tempo', `${hh}h ${String(mm).padStart(2,'0')}min`);
+        if (!silent) addToHistory(`⚖️ Peso | Início: ${fmtDT(inicio)} | Fim: ${fmtDT(tv)} | Prod: ${formatNum(cargaVal,3)} t/h | Peso: ${formatNum(peso,3)} ton`);
+    }
+}
+
+function limparOperacao() {
+    ['op-peso','op-carga'].forEach(id => getEl(id).value = '');
+    const ti = getEl('op-termino-input'); if (ti) ti.value = '';
+    cargaManualizada = false; limparResultados();
+}
+function limparResultados() {
+    ['op-24h','op-tempo','op-termino-result','op-carga-result','op-peso-result'].forEach(id => {
+        const el = getEl(id); if (el) { el.textContent = '—'; el.className = 'result-value'; }
+    });
+    getEl('op-carga').placeholder = 'Ex: 1.166 — deixe vazio p/ calcular';
+    getEl('op-peso').placeholder  = 'Ex: 63000';
+}
+
+function formatNum(n, d = 3) { return n.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:d}); }
+function splitH(h) { return { hh: Math.floor(h), mm: Math.round((h - Math.floor(h)) * 60) }; }
+function fmtDT(d) {
+    const ds = ['dom','seg','ter','qua','qui','sex','sáb'];
+    const p = n => String(n).padStart(2,'0');
+    return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())} (${ds[d.getDay()]})`;
+}
+
+// ====================================================================
+// DENSIDADE
+// ====================================================================
+function setDensity(mode, save = true) {
+    document.getElementById('calc-wrapper').setAttribute('data-density', mode);
+    document.querySelectorAll('.density-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('density-' + mode);
+    if (btn) btn.classList.add('active');
+    if (save) localStorage.setItem('calc_density', mode);
+    setTimeout(syncHistoryHeight, 50);
+}
+
+// ====================================================================
+// CALCULADORA BÁSICA
+// ====================================================================
+const previousOperandTextElement = document.getElementById('previous-operand');
+const currentOperandTextElement  = document.getElementById('current-operand');
+const historyListElement         = document.getElementById('history-list');
+const btnMc = document.getElementById('btn-mc');
+const btnMr = document.getElementById('btn-mr');
+
+let currentOperand    = '0';
+let previousOperand   = '';
+let operation         = undefined;
+let historyEntries    = [];
+let memoryValue       = 0;
+let memoryHasValue    = false;
+let shouldResetScreen = false;
+
+function init() {
+    const sh = localStorage.getItem('calc_history');
+    if (sh) historyEntries = JSON.parse(sh);
+    if (localStorage.getItem('calc_memory_flag') === 'true') {
+        memoryValue = parseFloat(localStorage.getItem('calc_memory')) || 0;
+        memoryHasValue = true; updateMemoryButtons();
+    }
+    setDensity(localStorage.getItem('calc_density') || 'standard', false);
+    updateHistoryUI(); updateDisplay();
+    setTimeout(syncHistoryHeight, 80);
+}
+
+function updateMemoryButtons() {
+    btnMc.disabled = !memoryHasValue; btnMr.disabled = !memoryHasValue;
+    localStorage.setItem('calc_memory', memoryValue);
+    localStorage.setItem('calc_memory_flag', memoryHasValue);
+}
+function memoryClear()    { memoryValue=0; memoryHasValue=false; updateMemoryButtons(); }
+function memoryRecall()   { if(!memoryHasValue) return; currentOperand=memoryValue.toString(); shouldResetScreen=false; updateDisplay(); }
+function memoryAdd()      { memoryValue+=parseFloat(currentOperand)||0; memoryHasValue=true; shouldResetScreen=true; updateMemoryButtons(); updateDisplay(); }
+function memorySubtract() { memoryValue-=parseFloat(currentOperand)||0; memoryHasValue=true; shouldResetScreen=true; updateMemoryButtons(); updateDisplay(); }
+function memoryStore()    { memoryValue =parseFloat(currentOperand)||0; memoryHasValue=true; shouldResetScreen=true; updateMemoryButtons(); updateDisplay(); }
+
+function clearAll()   { currentOperand='0'; previousOperand=''; operation=undefined; shouldResetScreen=false; updateDisplay(); }
+function clearEntry() { currentOperand='0'; shouldResetScreen=false; updateDisplay(); }
+function deleteNumber() {
+    if (shouldResetScreen) { clearEntry(); return; }
+    currentOperand = (currentOperand.length===1||(currentOperand.length===2&&currentOperand.startsWith('-')))
+        ? '0' : currentOperand.slice(0,-1);
+    updateDisplay();
+}
+function appendNumber(n) {
+    if (shouldResetScreen) { currentOperand=''; shouldResetScreen=false; }
+    if (n==='.'&&currentOperand.includes('.')) return;
+    currentOperand = (currentOperand==='0'&&n!=='.') ? n : currentOperand+n;
+    updateDisplay();
+}
+function toggleSign() {
+    if (!currentOperand||currentOperand==='0') return;
+    currentOperand=(parseFloat(currentOperand)*-1).toString(); updateDisplay();
+}
+function calculatePercentage() {
+    if (!currentOperand) return;
+    const c=parseFloat(currentOperand);
+    const r=(previousOperand!==''&&(operation==='+'||operation==='-'))
+        ?(parseFloat(previousOperand)*c)/100 : c/100;
+    currentOperand=r.toString(); shouldResetScreen=true; updateDisplay();
+}
+function singleOperation(type) {
+    if (!currentOperand) return;
+    const c=parseFloat(currentOperand); let r,expr;
+    if(type==='1/x'){if(!c){alert('Divisão por zero');return;} r=1/c; expr=`1/(${getDisplayNumber(c)})`;}
+    else if(type==='x2') {r=Math.pow(c,2); expr=`sqr(${getDisplayNumber(c)})`;}
+    else if(type==='sqrt'){if(c<0){alert('Entrada inválida');return;} r=Math.sqrt(c); expr=`√(${getDisplayNumber(c)})`;}
+    r=parseFloat(r.toPrecision(12));
+    addToHistory(`${expr} = ${getDisplayNumber(r)}`);
+    currentOperand=r.toString(); shouldResetScreen=true; updateDisplay();
+}
+function chooseOperation(op) {
+    if(!currentOperand&&!previousOperand) return;
+    if(!currentOperand){operation=op; updateDisplay(); return;}
+    if(previousOperand) computeChained();
+    operation=op; previousOperand=currentOperand; currentOperand=''; updateDisplay();
+}
+function computeChained() {
+    const p=parseFloat(previousOperand),c=parseFloat(currentOperand);
+    if(isNaN(p)||isNaN(c)) return;
+    let r;
+    switch(operation){case'+':r=p+c;break;case'-':r=p-c;break;case'*':r=p*c;break;
+    case'/':{if(!c){alert('Divisão por zero');return;}r=p/c;break;}default:return;}
+    currentOperand=parseFloat(r.toPrecision(12)).toString();
+}
+function compute(logHistory=true) {
+    const p=parseFloat(previousOperand),c=parseFloat(currentOperand);
+    if(isNaN(p)||isNaN(c)) return;
+    let r;
+    switch(operation){case'+':r=p+c;break;case'-':r=p-c;break;case'*':r=p*c;break;
+    case'/':{if(!c){alert('Divisão por zero');return;}r=p/c;break;}default:return;}
+    r=parseFloat(r.toPrecision(12));
+    if(logHistory){
+        const sym=operation==='*'?'×':operation==='/'?'÷':operation;
+        addToHistory(`${getDisplayNumber(p)} ${sym} ${getDisplayNumber(c)} = ${getDisplayNumber(r)}`);
+    }
+    currentOperand=r.toString(); operation=undefined; previousOperand=''; shouldResetScreen=true; updateDisplay();
+}
+function getDisplayNumber(n) {
+    if(n===''||n==='-') return n;
+    const parts=n.toString().split('.');
+    const int=parseFloat(parts[0]), dec=parts[1];
+    const intD=isNaN(int)?'0':int.toLocaleString('pt-BR',{maximumFractionDigits:0});
+    return dec!==undefined?`${intD},${dec}`:intD;
+}
+function updateDisplay() {
+    currentOperandTextElement.innerText = getDisplayNumber(currentOperand)||'0';
+    adaptDisplayFont();
+    if(operation!=null){
+        const sym=operation==='*'?'×':operation==='/'?'÷':operation;
+        previousOperandTextElement.innerText=`${getDisplayNumber(previousOperand)} ${sym}`;
+    } else previousOperandTextElement.innerText='';
+}
+
+// ====================================================================
+// HISTÓRICO
+// ====================================================================
+function addToHistory(expr) {
+    historyEntries.push(`[${new Date().toLocaleString('pt-BR')}] ${expr}`);
+    localStorage.setItem('calc_history', JSON.stringify(historyEntries));
+    updateHistoryUI();
+}
+function updateHistoryUI() {
+    historyListElement.innerHTML='';
+    if(!historyEntries.length){
+        historyListElement.innerHTML='<li style="color:#475569;font-size:0.82rem;text-align:center;margin-top:2rem;font-style:italic">Nenhum cálculo no histórico.</li>';
+        return;
+    }
+    [...historyEntries].reverse().forEach(entry => {
+        const li=document.createElement('li');
+        li.style.cssText='border-bottom:1px solid #1e293b;padding-bottom:0.6rem;margin-bottom:0.5rem;list-style:none';
+        const si=entry.indexOf(']')+1;
+        const time=entry.substring(0,si), math=entry.substring(si);
+        li.innerHTML=`<span style="color:#334155;font-size:0.68rem;display:block;margin-bottom:0.2rem;font-weight:600">${time}</span>`
+                    +`<span style="color:#cbd5e1;font-size:0.82rem;font-weight:600;word-break:break-word">${math}</span>`;
+        historyListElement.appendChild(li);
+    });
+}
+function clearHistory(){ historyEntries=[]; localStorage.removeItem('calc_history'); updateHistoryUI(); }
+
+// ====================================================================
+// EXPORTAÇÃO / IMPORTAÇÃO
+// ====================================================================
+function encryptText(t){try{return btoa(unescape(encodeURIComponent(t))).split('').reverse().join('');}catch(e){return 'Erro';}}
+function decryptText(t){try{return decodeURIComponent(escape(atob(t.split('').reverse().join(''))));}catch(e){return null;}}
+function downloadHistory(enc){
+    if(!historyEntries.length){alert('Histórico vazio!');return;}
+    let c=historyEntries.join('\n'),fn='historico_calculadora.txt';
+    if(enc){c=encryptText(c);fn='historico_criptografado.txt';}
+    const b=new Blob([c],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=fn;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+}
+function triggerImport(){document.getElementById('import-file-input').click();}
+function handleFileImport(event){
+    const file=event.target.files[0]; if(!file) return;
+    const r=new FileReader();
+    r.onload=function(e){
+        const c=e.target.result; if(!c) return;
+        let lines=[];
+        if(c.trim().startsWith('[')){lines=c.split('\n').filter(l=>l.trim());}
+        else{const d=decryptText(c);lines=(d&&d.trim().startsWith('[')? d:c).split('\n').filter(l=>l.trim());}
+        let added=0;
+        lines.forEach(l=>{if(!historyEntries.includes(l)){historyEntries.push(l);added++;}});
+        if(added>0){localStorage.setItem('calc_history',JSON.stringify(historyEntries));updateHistoryUI();setTimeout(()=>alert(`${added} registro(s) importado(s)!`),50);}
+        else alert('Nenhum registro novo encontrado.');
+    };
+    r.readAsText(file); event.target.value='';
+}
+
+// ====================================================================
+// TECLADO
+// ====================================================================
+document.addEventListener('keydown', function(e) {
+    if(currentMode!=='basic') return;
+    const k=e.key;
+    if(/^[0-9]$/.test(k))               {e.preventDefault();appendNumber(k);}
+    else if(k==='.'||k===',')            {e.preventDefault();appendNumber('.');}
+    else if(['+','-','*','/'].includes(k)){e.preventDefault();chooseOperation(k);}
+    else if(k==='Enter'||k==='=')        {e.preventDefault();compute();}
+    else if(k==='Backspace')             {e.preventDefault();deleteNumber();}
+    else if(k==='Escape')                {e.preventDefault();clearAll();}
+    else if(k==='%')                     {e.preventDefault();calculatePercentage();}
+});
+
+init();
+</script>
+</body>
+</html>
