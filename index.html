@@ -459,12 +459,31 @@
             width: 100%;
             padding: 0;
             margin: 0;
-            /* Remove o ícone de calendário nativo que desloca o texto */
             -webkit-appearance: none;
             appearance: none;
         }
         [data-theme="day"] .op-field input[type="datetime-local"] {
             color-scheme: light;
+        }
+        /* Controle de visibilidade do campo término via classe no field,
+           sem usar display:none no input (quebra Safari iOS) */
+        #field-termino.termino-as-result #op-termino-input {
+            position: absolute;
+            width: 1px; height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #field-termino.termino-as-result #op-termino-result {
+            display: block;
+        }
+        #field-termino.termino-as-input #op-termino-input {
+            position: static;
+            width: 100%; height: auto;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #field-termino.termino-as-input #op-termino-result {
+            display: none;
         }
         .op-field input::placeholder { color:var(--op-placeholder); }
         .op-field input:focus { color:var(--op-editable-inp); }
@@ -742,9 +761,9 @@
                     <span class="sub-value" id="op-carga-hint">Deixe em branco para calcular com ritmo atual</span>
                 </div>
 
-                <div class="op-field" id="field-termino">
+                <div class="op-field termino-as-result" id="field-termino">
                     <label id="label-termino">Previsão de Término</label>
-                    <input type="datetime-local" id="op-termino-input" step="60" oninput="opLiveUpdate()" style="display:none">
+                    <input type="datetime-local" id="op-termino-input" step="60" inputmode="none" oninput="opLiveUpdate()">
                     <div class="result-value" id="op-termino-result">—</div>
                 </div>
 
@@ -926,7 +945,7 @@ function setOpMode(mode) {
         cargaResult.style.display = 'none';
         cargaHint.textContent = 'Deixe em branco para calcular com ritmo atual';
         getEl('field-carga').classList.add('editable');
-        terminoInput.style.display = 'none'; terminoResult.style.display = 'block';
+        fieldTermino.classList.remove('termino-as-input'); fieldTermino.classList.add('termino-as-result');
         fieldTermino.classList.add('result-field');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
@@ -941,7 +960,7 @@ function setOpMode(mode) {
         cargaResult.style.display = 'block'; cargaResult.textContent = '—';
         cargaHint.textContent = 'Calculado a partir de Início + Término + Peso';
         getEl('field-carga').classList.add('result-field');
-        terminoInput.style.display = 'block'; terminoResult.style.display = 'none';
+        fieldTermino.classList.remove('termino-as-result'); fieldTermino.classList.add('termino-as-input');
         fieldTermino.classList.add('editable');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
@@ -956,7 +975,7 @@ function setOpMode(mode) {
         cargaResult.style.display = 'none';
         cargaHint.textContent = 'Informe a produtividade conhecida';
         getEl('field-carga').classList.add('editable');
-        terminoInput.style.display = 'block'; terminoResult.style.display = 'none';
+        fieldTermino.classList.remove('termino-as-result'); fieldTermino.classList.add('termino-as-input');
         fieldTermino.classList.add('editable');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
