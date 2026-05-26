@@ -4,8 +4,9 @@
 //             Network First para Tailwind CDN
 // ============================================================
 
-const CACHE_NAME   = 'scalc-v1.5';
-const CACHE_STATIC = 'scalc-static-v1.5';
+const APP_VERSION  = '1.5';                        // ← altere aqui a cada deploy
+const CACHE_NAME   = `scalc-v${APP_VERSION}`;
+const CACHE_STATIC = `scalc-static-v${APP_VERSION}`;
 
 // Arquivos locais que sempre devem estar no cache (offline total)
 const ASSETS = [
@@ -71,4 +72,11 @@ self.addEventListener('fetch', event => {
             });
         })
     );
+});
+
+// ── Responde com a versão quando o app perguntar ─────────────
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'GET_VERSION') {
+        event.source.postMessage({ type: 'VERSION', version: APP_VERSION });
+    }
 });

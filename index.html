@@ -610,6 +610,21 @@
         .theme-icon-sun  { right: 0.28rem; opacity: 0; }
         .theme-switch input:checked ~ .theme-track .theme-icon-moon { opacity: 0; }
         .theme-switch input:checked ~ .theme-track .theme-icon-sun  { opacity: 1; }
+
+        /* ============================================================
+           BADGE DE VERSÃO
+        ============================================================ */
+        #version-badge {
+            text-align: center;
+            font-size: 0.62rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            color: var(--txt-subtle);
+            padding: 0.35rem 0;
+            margin-top: 0.5rem;
+            opacity: 0.7;
+            user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -773,6 +788,10 @@
                 <button class="op-clear-btn btn-ripple" onclick="limparOperacao()">Limpar campos</button>
             </div>
         </div>
+
+
+        <!-- Badge de versão -->
+        <div id="version-badge">S_CALC v<span id="app-version">—</span></div>
 
     </div><!-- /calc-wrapper -->
 
@@ -1299,10 +1318,32 @@ init();
 </script>
 
 <script>
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js")
-            .catch(err => console.warn("SW:", err));
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+            // Aguarda o SW ficar ativo e pergunta a versão
+            function askVersion(sw) {
+                sw.postMessage({ type: 'GET_VERSION' });
+            }
+            // Ouve a resposta
+            navigator.serviceWorker.addEventListener('message', e => {
+                if (e.data && e.data.type === 'VERSION') {
+                    const el = document.getElementById('app-version');
+                    if (el) el.textContent = e.data.version;
+                }
+            });
+            // O SW pode já estar ativo (cache hit) ou ainda instalando
+            if (reg.active) {
+                askVersion(reg.active);
+            } else {
+                const sw = reg.installing || reg.waiting;
+                if (sw) {
+                    sw.addEventListener('statechange', () => {
+                        if (sw.state === 'activated') askVersion(sw);
+                    });
+                }
+            }
+        }).catch(err => console.warn('SW:', err));
     });
 }
 </script>
