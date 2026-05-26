@@ -465,26 +465,7 @@
         [data-theme="day"] .op-field input[type="datetime-local"] {
             color-scheme: light;
         }
-        /* Controle de visibilidade do campo término via classe no field,
-           sem usar display:none no input (quebra Safari iOS) */
-        #field-termino.termino-as-result #op-termino-input {
-            position: absolute;
-            width: 1px; height: 1px;
-            opacity: 0;
-            pointer-events: none;
-        }
-        #field-termino.termino-as-result #op-termino-result {
-            display: block;
-        }
-        #field-termino.termino-as-input #op-termino-input {
-            position: static;
-            width: 100%; height: auto;
-            opacity: 1;
-            pointer-events: auto;
-        }
-        #field-termino.termino-as-input #op-termino-result {
-            display: none;
-        }
+
         .op-field input::placeholder { color:var(--op-placeholder); }
         .op-field input:focus { color:var(--op-editable-inp); }
         .op-field.editable { background:var(--op-editable-bg); border-left:2px solid var(--op-editable-brd); }
@@ -761,9 +742,15 @@
                     <span class="sub-value" id="op-carga-hint">Deixe em branco para calcular com ritmo atual</span>
                 </div>
 
-                <div class="op-field termino-as-result" id="field-termino">
-                    <label id="label-termino">Previsão de Término</label>
-                    <input type="datetime-local" id="op-termino-input" step="60" inputmode="none" oninput="opLiveUpdate()">
+                <!-- Término como ENTRADA (Produtividade / Peso) -->
+                <div class="op-field editable" id="field-termino-input" style="display:none">
+                    <label>Término da Operação</label>
+                    <input type="datetime-local" id="op-termino-input" step="60" oninput="opLiveUpdate()">
+                </div>
+
+                <!-- Término como RESULTADO (modo Término) -->
+                <div class="op-field result-field" id="field-termino-result">
+                    <label>Previsão de Término</label>
                     <div class="result-value" id="op-termino-result">—</div>
                 </div>
 
@@ -921,66 +908,73 @@ function getEl(id) { return document.getElementById(id); }
 
 function setOpMode(mode) {
     opMode = mode;
+
+    // Botões de modo
     document.querySelectorAll('.calc-mode-btn').forEach(b => b.classList.remove('active'));
     getEl(mode === 'produtividade' ? 'opmode-produt' : 'opmode-' + mode).classList.add('active');
-    document.querySelectorAll('.op-field').forEach(f => f.classList.remove('editable','result-field'));
 
-    const pesoInput     = getEl('op-peso');
-    const pesoResult    = getEl('op-peso-result');
-    const cargaInput    = getEl('op-carga');
-    const cargaResult   = getEl('op-carga-result');
-    const cargaHint     = getEl('op-carga-hint');
-    const terminoInput  = getEl('op-termino-input');
-    const terminoResult = getEl('op-termino-result');
-    const fieldTermino  = getEl('field-termino');
-    const labelTermino  = getEl('label-termino');
+    // Helpers
+    const show = id => { const el = getEl(id); if (el) el.style.display = 'block'; };
+    const hide = id => { const el = getEl(id); if (el) el.style.display = 'none';  };
+    const editable = id => { const el = getEl(id); if (el) { el.classList.remove('result-field'); el.classList.add('editable'); } };
+    const result   = id => { const el = getEl(id); if (el) { el.classList.remove('editable'); el.classList.add('result-field'); } };
+    const neutral  = id => { const el = getEl(id); if (el) { el.classList.remove('editable','result-field'); } };
+
+    // Campos sempre presentes
+    getEl('field-inicio').classList.add('editable');
+    result('field-24h');
+    result('field-tempo');
 
     if (mode === 'termino') {
-        labelTermino.textContent = 'Previsão de Término';
-        pesoInput.style.display = 'block'; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
-        pesoResult.style.display = 'none';
-        getEl('field-peso').classList.add('editable');
-        cargaInput.style.display = 'block'; cargaInput.readOnly = false;
-        cargaInput.placeholder = 'Ex: 1.166 — deixe vazio p/ calcular';
-        cargaResult.style.display = 'none';
-        cargaHint.textContent = 'Deixe em branco para calcular com ritmo atual';
-        getEl('field-carga').classList.add('editable');
-        fieldTermino.classList.remove('termino-as-input'); fieldTermino.classList.add('termino-as-result');
-        fieldTermino.classList.add('result-field');
-        getEl('field-24h').classList.add('result-field');
-        getEl('field-tempo').classList.add('result-field');
-        getEl('field-inicio').classList.add('editable');
+        // Peso: entrada
+        show('op-peso'); hide('op-peso-result');
+        getEl('op-peso').readOnly = false; getEl('op-peso').placeholder = 'Ex: 63000';
+        editable('field-peso');
+
+        // Carga: entrada opcional
+        show('op-carga'); hide('op-carga-result');
+        getEl('op-carga').readOnly = false;
+        getEl('op-carga').placeholder = 'Ex: 1.166 — deixe vazio p/ calcular';
+        getEl('op-carga-hint').textContent = 'Deixe em branco para calcular com ritmo atual';
+        editable('field-carga');
+
+        // Término: resultado (div)
+        hide('field-termino-input');
+        show('field-termino-result');
 
     } else if (mode === 'produtividade') {
-        labelTermino.textContent = 'Término da Operação';
-        pesoInput.style.display = 'block'; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
-        pesoResult.style.display = 'none';
-        getEl('field-peso').classList.add('editable');
-        cargaInput.style.display = 'none'; cargaInput.value = '';
-        cargaResult.style.display = 'block'; cargaResult.textContent = '—';
-        cargaHint.textContent = 'Calculado a partir de Início + Término + Peso';
-        getEl('field-carga').classList.add('result-field');
-        fieldTermino.classList.remove('termino-as-result'); fieldTermino.classList.add('termino-as-input');
-        fieldTermino.classList.add('editable');
-        getEl('field-24h').classList.add('result-field');
-        getEl('field-tempo').classList.add('result-field');
-        getEl('field-inicio').classList.add('editable');
+        // Peso: entrada
+        show('op-peso'); hide('op-peso-result');
+        getEl('op-peso').readOnly = false; getEl('op-peso').placeholder = 'Ex: 63000';
+        editable('field-peso');
+
+        // Carga: resultado
+        hide('op-carga'); getEl('op-carga').value = '';
+        show('op-carga-result'); getEl('op-carga-result').textContent = '—';
+        getEl('op-carga-hint').textContent = 'Calculado a partir de Início + Término + Peso';
+        result('field-carga');
+
+        // Término: entrada (input datetime)
+        show('field-termino-input');
+        hide('field-termino-result');
 
     } else if (mode === 'peso') {
-        labelTermino.textContent = 'Término da Operação';
-        pesoInput.style.display = 'none'; pesoInput.value = '';
-        pesoResult.style.display = 'block'; pesoResult.textContent = '—';
-        getEl('field-peso').classList.add('result-field');
-        cargaInput.style.display = 'block'; cargaInput.readOnly = false; cargaInput.placeholder = 'Ex: 1.166';
-        cargaResult.style.display = 'none';
-        cargaHint.textContent = 'Informe a produtividade conhecida';
-        getEl('field-carga').classList.add('editable');
-        fieldTermino.classList.remove('termino-as-result'); fieldTermino.classList.add('termino-as-input');
-        fieldTermino.classList.add('editable');
-        getEl('field-24h').classList.add('result-field');
-        getEl('field-tempo').classList.add('result-field');
-        getEl('field-inicio').classList.add('editable');
+        // Peso: resultado
+        hide('op-peso'); getEl('op-peso').value = '';
+        show('op-peso-result'); getEl('op-peso-result').textContent = '—';
+        result('field-peso');
+
+        // Carga: entrada
+        show('op-carga'); hide('op-carga-result');
+        getEl('op-carga').readOnly = false; getEl('op-carga').placeholder = 'Ex: 1.166';
+        getEl('op-carga-hint').textContent = 'Informe a produtividade conhecida';
+        editable('field-carga');
+
+        // Término: entrada (input datetime)
+        show('field-termino-input');
+        hide('field-termino-result');
     }
+
     limparResultados();
     setTimeout(syncHistoryHeight, 50);
 }
@@ -1057,8 +1051,9 @@ function calcularOperacao(silent = false) {
 }
 
 function limparOperacao() {
-    ['op-peso','op-carga'].forEach(id => getEl(id).value = '');
-    const ti = getEl('op-termino-input'); if (ti) ti.value = '';
+    ['op-peso','op-carga','op-termino-input'].forEach(id => {
+        const el = getEl(id); if (el) el.value = '';
+    });
     cargaManualizada = false; limparResultados();
 }
 function limparResultados() {
