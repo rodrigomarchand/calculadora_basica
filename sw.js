@@ -4,7 +4,7 @@
 //             Network First para Tailwind CDN
 // ============================================================
 
-const APP_VERSION  = '1.5';                        // ← altere aqui a cada deploy
+const APP_VERSION  = '1.6';                        // ← altere aqui a cada deploy
 const CACHE_NAME   = `scalc-v${APP_VERSION}`;
 const CACHE_STATIC = `scalc-static-v${APP_VERSION}`;
 
