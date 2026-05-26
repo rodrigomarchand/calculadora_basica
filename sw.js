@@ -4,8 +4,8 @@
 //             Network First para Tailwind CDN
 // ============================================================
 
-const CACHE_NAME   = 'scalc-v1.3';
-const CACHE_STATIC = 'scalc-static-v1.3';
+const CACHE_NAME   = 'scalc-v1.4';
+const CACHE_STATIC = 'scalc-static-v1.4';
 
 // Arquivos locais que sempre devem estar no cache (offline total)
 const ASSETS = [
