@@ -512,14 +512,9 @@
         ============================================================ */
         #history-list li {
             word-break: break-word;
-            touch-action: manipulation;
-            -webkit-user-select: none;
-            user-select: none;
-            cursor: default;
         }
-        /* Scroll da lista sem delay */
+        /* Scroll suave no iOS */
         #history-list {
-            touch-action: pan-y;
             -webkit-overflow-scrolling: touch;
         }
 
@@ -923,15 +918,15 @@ function setOpMode(mode) {
 
     if (mode === 'termino') {
         labelTermino.textContent = 'Previsão de Término';
-        pesoInput.style.display = ''; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
+        pesoInput.style.display = 'block'; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
         pesoResult.style.display = 'none';
         getEl('field-peso').classList.add('editable');
-        cargaInput.style.display = ''; cargaInput.readOnly = false;
+        cargaInput.style.display = 'block'; cargaInput.readOnly = false;
         cargaInput.placeholder = 'Ex: 1.166 — deixe vazio p/ calcular';
         cargaResult.style.display = 'none';
         cargaHint.textContent = 'Deixe em branco para calcular com ritmo atual';
         getEl('field-carga').classList.add('editable');
-        terminoInput.style.display = 'none'; terminoResult.style.display = '';
+        terminoInput.style.display = 'none'; terminoResult.style.display = 'block';
         fieldTermino.classList.add('result-field');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
@@ -939,14 +934,14 @@ function setOpMode(mode) {
 
     } else if (mode === 'produtividade') {
         labelTermino.textContent = 'Término da Operação';
-        pesoInput.style.display = ''; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
+        pesoInput.style.display = 'block'; pesoInput.readOnly = false; pesoInput.placeholder = 'Ex: 63000';
         pesoResult.style.display = 'none';
         getEl('field-peso').classList.add('editable');
         cargaInput.style.display = 'none'; cargaInput.value = '';
-        cargaResult.style.display = ''; cargaResult.textContent = '—';
+        cargaResult.style.display = 'block'; cargaResult.textContent = '—';
         cargaHint.textContent = 'Calculado a partir de Início + Término + Peso';
         getEl('field-carga').classList.add('result-field');
-        terminoInput.style.display = ''; terminoResult.style.display = 'none';
+        terminoInput.style.display = 'block'; terminoResult.style.display = 'none';
         fieldTermino.classList.add('editable');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
@@ -955,13 +950,13 @@ function setOpMode(mode) {
     } else if (mode === 'peso') {
         labelTermino.textContent = 'Término da Operação';
         pesoInput.style.display = 'none'; pesoInput.value = '';
-        pesoResult.style.display = ''; pesoResult.textContent = '—';
+        pesoResult.style.display = 'block'; pesoResult.textContent = '—';
         getEl('field-peso').classList.add('result-field');
-        cargaInput.style.display = ''; cargaInput.readOnly = false; cargaInput.placeholder = 'Ex: 1.166';
+        cargaInput.style.display = 'block'; cargaInput.readOnly = false; cargaInput.placeholder = 'Ex: 1.166';
         cargaResult.style.display = 'none';
         cargaHint.textContent = 'Informe a produtividade conhecida';
         getEl('field-carga').classList.add('editable');
-        terminoInput.style.display = ''; terminoResult.style.display = 'none';
+        terminoInput.style.display = 'block'; terminoResult.style.display = 'none';
         fieldTermino.classList.add('editable');
         getEl('field-24h').classList.add('result-field');
         getEl('field-tempo').classList.add('result-field');
@@ -1283,93 +1278,7 @@ function setTheme(theme, save = true) {
     if (save) localStorage.setItem('calc_theme', theme);
 }
 
-// ====================================================================
-// LONG-PRESS NO HISTÓRICO — copia item para área de transferência
-// Ativado apenas no Safari iOS (ontouchstart disponível)
-// ====================================================================
-(function setupHistoryLongPress() {
-    if (!('ontouchstart' in window)) return;
-    let pressTimer = null;
 
-    // execCommand é o método mais confiável no Safari iOS PWA
-    // (clipboard API requer foco explícito e pode falhar em standalone)
-    function copyText(text, li) {
-        const clean = text.trim();
-        let ok = false;
-
-        // Tenta execCommand primeiro (mais compatível com Safari PWA)
-        try {
-            const ta = document.createElement('textarea');
-            ta.value = clean;
-            // Precisa ser visível e no viewport para o Safari aceitar
-            ta.style.cssText = 'position:fixed;top:10px;left:10px;width:1px;height:1px;'
-                             + 'opacity:0.01;border:none;outline:none;resize:none;';
-            document.body.appendChild(ta);
-            ta.focus();
-            ta.setSelectionRange(0, ta.value.length);
-            ok = document.execCommand('copy');
-            document.body.removeChild(ta);
-        } catch(e) { ok = false; }
-
-        if (ok) {
-            flashItem(li);
-            showToast('✓ Copiado!');
-            return;
-        }
-
-        // Fallback: clipboard API (funciona em Safari ≥ 13.1 com página em foco)
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(clean)
-                .then(() => { flashItem(li); showToast('✓ Copiado!'); })
-                .catch(() => showToast('Selecione o texto manualmente'));
-        } else {
-            showToast('Selecione o texto manualmente');
-        }
-    }
-
-    function flashItem(li) {
-        li.style.transition = 'opacity 0.12s';
-        li.style.opacity = '0.25';
-        setTimeout(() => { li.style.opacity = '1'; }, 220);
-    }
-
-    function startPress(e) {
-        const li = e.target.closest('#history-list li');
-        if (!li) return;
-        // Previne seleção de texto do iOS durante o press
-        pressTimer = setTimeout(() => {
-            const text = li.innerText || li.textContent || '';
-            copyText(text, li);
-        }, 600);
-    }
-
-    function cancelPress() {
-        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-    }
-
-    document.addEventListener('touchstart',  startPress,   { passive: true });
-    document.addEventListener('touchend',    cancelPress,  { passive: true });
-    document.addEventListener('touchmove',   cancelPress,  { passive: true });
-    document.addEventListener('touchcancel', cancelPress,  { passive: true });
-})();
-
-// Toast de confirmação
-function showToast(msg) {
-    let t = document.getElementById('copy-toast');
-    if (!t) {
-        t = document.createElement('div');
-        t.id = 'copy-toast';
-        t.style.cssText = 'position:fixed;bottom:5rem;left:50%;transform:translateX(-50%);'
-            + 'background:#4338ca;color:#fff;padding:0.5rem 1.2rem;border-radius:999px;'
-            + 'font-size:0.82rem;font-weight:700;z-index:9999;opacity:0;'
-            + 'transition:opacity 0.2s;pointer-events:none;white-space:nowrap';
-        document.body.appendChild(t);
-    }
-    t.textContent = msg;
-    t.style.opacity = '1';
-    clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 1800);
-}
 
 
 init();
