@@ -5,7 +5,7 @@
 // ============================================================
 
 const CACHE_NAME   = 'scalc-v1';
-const CACHE_STATIC = 'scalc-static-v1';
+const CACHE_STATIC = 'scalc-static-v1.1';
 
 // Arquivos locais que sempre devem estar no cache (offline total)
 const ASSETS = [
